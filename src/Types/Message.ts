@@ -145,7 +145,7 @@ export type AnyRegularMessageContent = (
         listReply: Omit<proto.Message.IListResponseMessage, 'contextInfo'>
     }
     | {
-        product: WASendableProduct,
+        product: WASendableProduct
         businessOwnerJid?: string
         body?: string
         footer?: string
