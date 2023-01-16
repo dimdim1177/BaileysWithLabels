@@ -5,6 +5,7 @@ import { WACallEvent } from './Call'
 import { Chat, ChatUpdate, PresenceData } from './Chat'
 import { Contact } from './Contact'
 import { GroupMetadata, ParticipantAction } from './GroupMetadata'
+import { Label } from './Label'
 import { MessageUpsertType, MessageUserReceiptUpdate, WAMessage, WAMessageKey, WAMessageUpdate } from './Message'
 import { ConnectionState } from './State'
 
@@ -32,6 +33,8 @@ export type BaileysEventMap = {
     'contacts.upsert': Contact[]
     'contacts.update': Partial<Contact>[]
 
+    'labels.upsert': Label[]
+
     'messages.delete': { keys: WAMessageKey[] } | { jid: string, all: true }
     'messages.update': WAMessageUpdate[]
     'messages.media-update': { key: WAMessageKey, media?: { ciphertext: Uint8Array, iv: Uint8Array }, error?: Boom }[]
@@ -52,6 +55,7 @@ export type BaileysEventMap = {
 
     'blocklist.set': { blocklist: string[] }
     'blocklist.update': { blocklist: string[], type: 'add' | 'remove' }
+
     /** Receive an update on a call, including when the call was received, rejected, accepted */
     'call': WACallEvent[]
 }
@@ -69,6 +73,7 @@ export type BufferedEventData = {
     chatDeletes: Set<string>
     contactUpserts: { [jid: string]: Contact }
     contactUpdates: { [jid: string]: Partial<Contact> }
+    labelUpserts: { [jid: string]: Label }
     messageUpserts: { [key: string]: { type: MessageUpsertType, message: WAMessage } }
     messageUpdates: { [key: string]: WAMessageUpdate }
     messageDeletes: { [key: string]: WAMessageKey }

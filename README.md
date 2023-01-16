@@ -681,6 +681,24 @@ WA uses an encrypted form of communication to send chat/app updates. This has be
   },
   '123456@s.whatsapp.net')
   ```
+- Add labels to chat
+  ``` ts
+  await sock.addChatLabelIds({
+    addLabels: ['1', '2'] // list of label ids for add
+  },
+  '123456@s.whatsapp.net')
+  ```
+
+- Delete labels from chat
+  ``` ts
+  await sock.delChatLabelIds({
+    delLabels: ['1', '2'] // list of label ids for delete
+  },
+  '123456@s.whatsapp.net')
+  ```
+
+  Current list of chat label ids you can find at store.chats[chatId].labels
+  List of all available label objects at store.labels
 
 **Note:** if you mess up one of your updates, WA can log you out of all your devices and you'll have to log in again.
 

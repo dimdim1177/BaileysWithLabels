@@ -37,6 +37,9 @@ export type WAPatchCreate = {
 export type Chat = proto.IConversation & {
     /** unix timestamp of when the last message was received in the chat */
     lastMessageRecvTimestamp?: number
+
+    /** Chat labels */
+    labels?: string[]
 }
 
 export type ChatUpdate = Partial<Chat & {
@@ -50,6 +53,12 @@ export type ChatUpdate = Partial<Chat & {
      * undefined if the condition is not yet fulfilled
      * */
     conditional: (bufferedData: BufferedEventData) => boolean | undefined
+
+    /* labels for add to chat */
+    addLabels: string[]
+
+    /* labels for delete from chat */
+    delLabels: string[]
 }>
 
 /**
@@ -83,6 +92,12 @@ export type ChatModification =
         lastMessages: LastMessageList
     }
     | { delete: true, lastMessages: LastMessageList }
+    | {
+        addLabelId: string
+    }
+    | {
+        delLabelId: string
+    }
 
 export type InitialReceivedChatsState = {
     [jid: string]: {

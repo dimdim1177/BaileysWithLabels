@@ -1,5 +1,16 @@
 import { Boom } from '@hapi/boom'
-import makeWASocket, { AnyMessageContent, delay, DisconnectReason, fetchLatestBaileysVersion, isJidBroadcast, makeCacheableSignalKeyStore, makeInMemoryStore, MessageRetryMap, useMultiFileAuthState } from '../src'
+import makeWASocket, {
+	AnyMessageContent,
+	delay,
+	DisconnectReason,
+	fetchLatestBaileysVersion,
+	isJidBroadcast,
+	Label,
+	makeCacheableSignalKeyStore,
+	makeInMemoryStore,
+	MessageRetryMap,
+	useMultiFileAuthState
+} from '../src'
 import MAIN_LOGGER from '../src/Utils/logger'
 
 const logger = MAIN_LOGGER.child({ })
@@ -114,10 +125,66 @@ const startSock = async() => {
 
 				if(upsert.type === 'notify') {
 					for(const msg of upsert.messages) {
+						const chatId = msg.key.remoteJid!
 						if(!msg.key.fromMe && doReplies) {
-							console.log('replying to', msg.key.remoteJid)
+							console.log('replying to', chatId)
 							await sock!.readMessages([msg.key])
-							await sendMessageWTyping({ text: 'Hello there!' }, msg.key.remoteJid!)
+							await sendMessageWTyping({ text: 'Hello there!' }, chatId)
+						}
+
+						if((msg.key.fromMe) && (msg?.message?.conversation)) {
+							const nostore = 'Store is absent'
+							const text: string = msg.message.conversation
+							console.log('COMMAND', text)
+							const words: string[] = text.trim().split(' ')
+							const command = words[0] ?? ''
+							const tail = words.length > 1 ? words.slice(1).join(' ') : ''
+							let labelIds = tail ? tail.split(',') : []
+							if(labelIds) {
+								labelIds = labelIds.map(labelId => labelId.trim())
+							}
+
+							let reply = ''
+							switch (command) {
+								case 'labels':
+									reply = store?.getLabels ? JSON.stringify(store.getLabels()) : nostore
+
+									break
+								case 'labelIds':
+									reply = store?.getLabelIds ? JSON.stringify(store.getLabelIds()) : nostore
+
+									break
+								case 'chatLabelIds':
+									reply = store?.getChatLabelIds ? JSON.stringify(store.getChatLabelIds(chatId)) : nostore
+
+									break
+								case 'chatLabels':
+									reply = store?.getChatLabels ? JSON.stringify(store.getChatLabels(chatId)) : nostore
+
+									break
+								case 'setChatLabelIds':
+									reply = store?.setChatLabelIds ? JSON.stringify(store.setChatLabelIds(chatId, labelIds, sock)) : nostore
+
+									break
+								case 'addChatLabelIds':
+									reply = store?.addChatLabelIds ? JSON.stringify(store.addChatLabelIds(chatId, labelIds, sock)) : nostore
+
+									break
+								case 'delChatLabelIds':
+									reply = store?.delChatLabelIds ? JSON.stringify(store.delChatLabelIds(chatId, labelIds, sock)) : nostore
+
+									break
+								case 'delAllChatLabelIds':
+									reply = store?.delChatLabelIds ? JSON.stringify(store.delChatLabelIds(chatId, true, sock)) : nostore
+
+									break
+							}
+
+							if(reply) {
+								const content = { text: 'REPLY on COMMAND ' + text + '\n' + reply }
+								console.log('REPLY', content)
+								await sock.sendMessage(chatId, content)
+							}
 						}
 					}
 				}

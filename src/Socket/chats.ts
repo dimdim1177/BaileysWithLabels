@@ -184,6 +184,18 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		await chatModify({ pushNameSetting: name }, '')
 	}
 
+	/* Add list of label ids to chat */
+	const addChatLabelIds = async(chatId: string, labelIds: string[]) => {
+		const promises = labelIds.map(async labelId => await chatModify({ addLabelId: labelId }, chatId))
+		await Promise.all(promises)
+	}
+
+	/* Delete list of label ids from chat */
+	const delChatLabelIds = async(chatId: string, labelIds: string[]) => {
+		const promises = labelIds.map(async labelId => await chatModify({ delLabelId: labelId }, chatId))
+		await Promise.all(promises)
+	}
+
 	const fetchBlocklist = async() => {
 		const result = await query({
 			tag: 'iq',
@@ -859,6 +871,8 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		updateBlockStatus,
 		getBusinessProfile,
 		resyncAppState,
-		chatModify
+		chatModify,
+		addChatLabelIds,
+		delChatLabelIds
 	}
 }

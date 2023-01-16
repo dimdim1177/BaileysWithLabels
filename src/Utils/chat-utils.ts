@@ -606,6 +606,30 @@ export const chatModificationToAppPatch = (
 			apiVersion: 1,
 			operation: OP.SET,
 		}
+	} else if('addLabelId' in mod) {
+		patch = {
+			syncAction: {
+				labelAssociationAction: {
+					labeled: true
+				},
+			},
+			index: [ 'label_jid', mod.addLabelId, jid ],
+			type: 'regular_low',
+			apiVersion: 3,
+			operation: OP.SET
+		}
+	} else if('delLabelId' in mod) {
+		patch = {
+			syncAction: {
+				labelAssociationAction: {
+					labeled: false
+				},
+			},
+			index: [ 'label_jid', mod.delLabelId, jid ],
+			type: 'regular_low',
+			apiVersion: 3,
+			operation: OP.SET
+		}
 	} else {
 		throw new Boom('not supported')
 	}
@@ -731,6 +755,28 @@ export const processSyncAction = (
 		if(!isInitialSync) {
 			ev.emit('chats.delete', [id])
 		}
+	} else if(action?.labelAssociationAction && 'label_jid' === type) {
+		const chatUpdate: Partial<ChatUpdate> = {
+			id: String(msgId),
+			conditional: undefined
+		}
+		const labelId = String(id)
+		if(action.labelAssociationAction.labeled) {
+			chatUpdate.addLabels = [ labelId ]
+		} else {
+			chatUpdate.delLabels = [ labelId ]
+		}
+
+		ev.emit('chats.update', [ chatUpdate ])
+	} else if(action?.labelEditAction && 'label_jid' === type) {
+		const { labelEditAction } = action
+		ev.emit('labels.upsert', [{
+			id: String(id),
+			name: labelEditAction?.name!,
+			color: labelEditAction?.color!,
+			predefinedId: labelEditAction?.predefinedId!,
+			deleted: labelEditAction?.deleted!
+		}])
 	} else {
 		logger?.debug({ syncAction, id }, 'unprocessable update')
 	}

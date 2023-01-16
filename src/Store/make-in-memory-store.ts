@@ -5,7 +5,8 @@ import { proto } from '../../WAProto'
 import { DEFAULT_CONNECTION_CONFIG } from '../Defaults'
 import type makeMDSocket from '../Socket'
 import type { BaileysEventEmitter, Chat, ConnectionState, Contact, GroupMetadata, PresenceData, WAMessage, WAMessageCursor, WAMessageKey } from '../Types'
-import { toNumber, updateMessageWithReaction, updateMessageWithReceipt } from '../Utils'
+import { Label } from '../Types'
+import { toNumber, updateChatLabels, updateMessageWithReaction, updateMessageWithReceipt } from '../Utils'
 import { jidNormalizedUser } from '../WABinary'
 import makeOrderedDictionary from './make-ordered-dictionary'
 
@@ -35,6 +36,7 @@ export default (
 	const chats = new KeyedDB(chatKey, c => c.id)
 	const messages: { [_: string]: ReturnType<typeof makeMessagesDictionary> } = { }
 	const contacts: { [_: string]: Contact } = { }
+	const labels: { [_: string]: Label } = { }
 	const groupMetadata: { [_: string]: GroupMetadata } = { }
 	const presences: { [id: string]: { [participant: string]: PresenceData } } = { }
 	const state: ConnectionState = { connection: 'close' }
@@ -58,6 +60,19 @@ export default (
 		}
 
 		return oldContacts
+	}
+
+	const labelsUpsert = (newLabels: Label[]) => {
+		const oldLabels = new Set(Object.keys(labels))
+		for(const label of newLabels) {
+			oldLabels.delete(String(label.id))
+			labels[label.id] = Object.assign(
+				labels[label.id] || {},
+				label
+			)
+		}
+
+		return oldLabels
 	}
 
 	/**
@@ -113,6 +128,15 @@ export default (
 				}
 			}
 		})
+		ev.on('labels.upsert', upsertLabels => {
+			for(const label of upsertLabels) {
+				if(labels[label.id!]) {
+					Object.assign(labels[label.id!], label)
+				} else {
+					labels[label.id!] = label
+				}
+			}
+		})
 		ev.on('chats.upsert', newChats => {
 			chats.upsert(...newChats)
 		})
@@ -123,6 +147,9 @@ export default (
 						update = { ...update }
 						update.unreadCount = (chat.unreadCount || 0) + update.unreadCount!
 					}
+
+					/* apply update list of labels to chat */
+					updateChatLabels(update, chat)
 
 					Object.assign(chat, update)
 				})
@@ -246,12 +273,14 @@ export default (
 	const toJSON = () => ({
 		chats,
 		contacts,
+		labels,
 		messages
 	})
 
-	const fromJSON = (json: { chats: Chat[], contacts: { [id: string]: Contact }, messages: { [id: string]: WAMessage[] } }) => {
+	const fromJSON = (json: { chats: Chat[], contacts: { [id: string]: Contact }, labels: { [id: string]: Label }, messages: { [id: string]: WAMessage[] } }) => {
 		chats.upsert(...json.chats)
 		contactsUpsert(Object.values(json.contacts))
+		labelsUpsert(Object.values(json.labels))
 		for(const jid in json.messages) {
 			const list = assertMessageList(jid)
 			for(const msg of json.messages[jid]) {
@@ -260,10 +289,10 @@ export default (
 		}
 	}
 
-
 	return {
 		chats,
 		contacts,
+		labels,
 		messages,
 		groupMetadata,
 		state,
@@ -353,6 +382,71 @@ export default (
 				const json = JSON.parse(jsonStr)
 				fromJSON(json)
 			}
-		}
+		},
+
+		/* Get list of all available labels as objects Label */
+		getLabels:(): Label[] => {
+			return Object.values(labels)
+		},
+
+		/* Get list of all available labels as ids */
+		getLabelIds:(): string[] => {
+			return Object.keys(labels)
+		},
+
+		/* Get list of chat labels as ids */
+		getChatLabelIds:(chatId: string): string[] => {
+			const chat = chats.get(chatId)
+			return chat.labels || []
+		},
+
+		/* Get list of chat labels as objects Label */
+		getChatLabels:(chatId: string): Label[] => {
+			const chat = chats.get(chatId)
+			const r: Label[] = []
+			chat.labels?.forEach(labelId => r.push(labels[labelId]))
+			return r
+		},
+
+		/* Set list of chat labels ids */
+		setChatLabelIds: async(chatId: string, labelIds: string[], sock: WASocket | undefined) => {
+			const chat = chats.get(chatId)
+			const nowLabelIds = chat.labels || []
+			const addLabelIds = labelIds.filter(labelId => !nowLabelIds.includes(labelId))
+			const delLabelIds = nowLabelIds.filter(labelId => !labelIds.includes(labelId))
+			if(addLabelIds.length) {
+				await sock?.addChatLabelIds(chatId, addLabelIds)
+			}
+
+			if(delLabelIds.length) {
+				await sock?.delChatLabelIds(chatId, delLabelIds)
+			}
+
+			return true
+		},
+
+		/* Add labels to chat by list of label ids */
+		addChatLabelIds: async(chatId: string, labelIds: string[], sock: WASocket | undefined) => {
+			const chat = chats.get(chatId)
+			const nowLabelIds = chat.labels || []
+			const addLabelIds = labelIds.filter(labelId => !nowLabelIds.includes(labelId))
+			if(addLabelIds.length) {
+				await sock?.addChatLabelIds(chatId, addLabelIds)
+			}
+
+			return true
+		},
+
+		/* Delete labels from chat by list of label ids of all exists, if labelIds is true */
+		delChatLabelIds: async(chatId: string, labelIds: string[] | true, sock: WASocket | undefined) => {
+			const chat = chats.get(chatId)
+			const nowLabelIds = chat.labels || []
+			const delLabelIds = true === labelIds ? nowLabelIds : nowLabelIds.filter(labelId => labelIds.includes(labelId))
+			if(delLabelIds.length) {
+				await sock?.delChatLabelIds(chatId, delLabelIds)
+			}
+
+			return true
+		},
 	}
 }

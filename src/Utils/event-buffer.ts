@@ -1,7 +1,7 @@
 import EventEmitter from 'events'
 import { Logger } from 'pino'
 import { proto } from '../../WAProto'
-import { BaileysEvent, BaileysEventEmitter, BaileysEventMap, BufferedEventData, Chat, ChatUpdate, Contact, WAMessage, WAMessageStatus } from '../Types'
+import { BaileysEvent, BaileysEventEmitter, BaileysEventMap, BufferedEventData,	Chat, ChatUpdate, Contact, Label, WAMessage, WAMessageStatus } from '../Types'
 import { trimUndefineds } from './generics'
 import { updateMessageWithReaction, updateMessageWithReceipt } from './messages'
 import { isRealMessage, shouldIncrementChatUnread } from './process-message'
@@ -13,6 +13,7 @@ const BUFFERABLE_EVENT = [
 	'chats.delete',
 	'contacts.upsert',
 	'contacts.update',
+	'labels.upsert',
 	'messages.upsert',
 	'messages.update',
 	'messages.delete',
@@ -174,6 +175,7 @@ const makeBufferData = (): BufferedEventData => {
 		chatDeletes: new Set(),
 		contactUpserts: { },
 		contactUpdates: { },
+		labelUpserts: { },
 		messageUpserts: { },
 		messageUpdates: { },
 		messageReactions: { },
@@ -268,10 +270,21 @@ function append<E extends BufferableEvent>(
 				// if there is an existing upsert, merge the update into it
 				const upsert = data.historySets.chats[chatId] || data.chatUpserts[chatId]
 				if(upsert) {
+					/* apply update list of labels to chat */
+					updateChatLabels(update, upsert)
 					concatChats(upsert, update)
 				} else {
 					// merge the update into the existing update
 					const chatUpdate = data.chatUpdates[chatId] || { }
+
+					if(Array.isArray(chatUpdate.addLabels) && Array.isArray(update.addLabels)) {
+						update.addLabels = [...new Set([...chatUpdate.addLabels, ...update.addLabels])]
+					}
+
+					if(Array.isArray(chatUpdate.delLabels) && Array.isArray(update.delLabels)) {
+						update.delLabels = [...new Set([...chatUpdate.delLabels, ...update.delLabels])]
+					}
+
 					data.chatUpdates[chatId] = concatChats(chatUpdate, update)
 				}
 			} else if(conditionMatches === undefined) {
@@ -346,6 +359,17 @@ function append<E extends BufferableEvent>(
 				// merge into prior update
 				const contactUpdate = data.contactUpdates[id] || { }
 				data.contactUpdates[id] = Object.assign(contactUpdate, update)
+			}
+		}
+
+		break
+	case 'labels.upsert':
+		for(const label of eventData as Label[]) {
+			let upsert = data.labelUpserts[label.id]
+			if(upsert) {
+				upsert = Object.assign(upsert, trimUndefineds(label))
+			} else {
+				data.labelUpserts[label.id] = label
 			}
 		}
 
@@ -583,6 +607,11 @@ function consolidateEvents(data: BufferedEventData) {
 		map['contacts.update'] = contactUpdateList
 	}
 
+	const labelUpsertList = Object.values(data.labelUpserts)
+	if(labelUpsertList.length) {
+		map['labels.upsert'] = labelUpsertList
+	}
+
 	const groupUpdateList = Object.values(data.groupUpdates)
 	if(groupUpdateList.length) {
 		map['groups.update'] = groupUpdateList
@@ -611,3 +640,23 @@ function concatChats<C extends Partial<Chat>>(a: C, b: Partial<Chat>) {
 }
 
 const stringifyMessageKey = (key: proto.IMessageKey) => `${key.remoteJid},${key.id},${key.fromMe ? '1' : '0'}`
+
+/**
+ * Update labels list in chat
+ *
+ * Extract addLabels and delLabels from update and apply it to chat
+ */
+export function updateChatLabels(update: Partial<ChatUpdate>, chat: Partial<Chat>) {
+	const { addLabels, delLabels } = update
+	if(addLabels) {
+		delete update.addLabels
+		update.labels = chat.labels || []
+		update.labels = [...new Set([...update.labels, ...addLabels])].sort()
+	}
+
+	if(delLabels) {
+		delete update.delLabels
+		update.labels = update.labels || (chat.labels || [])
+		update.labels = update.labels?.filter(labelId => !delLabels.includes(labelId))
+	}
+}
